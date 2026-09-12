@@ -47,7 +47,7 @@ export function DraftCard({ transcript }: { transcript: string }) {
       const response = await fetch("/api/counterpoint/slack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: draft }),
+        body: JSON.stringify({ text: draft, issue }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || `Slack request failed (HTTP ${response.status}).`);
