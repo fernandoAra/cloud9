@@ -1,156 +1,52 @@
-<div align="center">
+# Counterpoint
 
-# Agents, Everywhere Hackathon Starter Kit
+Counterpoint is a quiet research partner for a live brainstorm. When someone raises a concrete uncertainty such as “Does browser speech recognition already exist?”, it searches public sources while the conversation continues. It prepares a short, sourced contribution, then offers it only after a suitable pause. A new human utterance cancels playback; an outdated finding is discarded.
 
-![Agents, Everywhere hackathon — OpenAI, CopilotKit, OpenRouter, Exa, Auth0, and Ambiguous AI](assets/banner.png)
+The problem is timing as much as research. A separate chat interrupts the discussion, while an always-talking assistant can dominate it. Counterpoint makes its research and participation decisions visible in an activity panel, including why a finding is held or discarded.
 
-**Build an agent that belongs where people already work, talk, and live.**
+## What runs today
 
-[Overview](#overview) · [Get started](#get-started) · [Templates](#templates) · [Coding agent](#coding-agent) · [Resources](#resources)
+The MVP runs at **`/voice` in Chrome**. Browser speech recognition supplies interim and final transcript text; [uncertainty detection](apps/web/src/lib/uncertainty.ts) identifies researchable questions; the existing server-side [Exa search route](apps/web/src/app/api/search/route.ts) retrieves sources; [Gemini Flash-Lite](apps/web/src/app/api/counterpoint/route.ts) prepares a brief contribution. A single [participation gate](apps/web/src/lib/participation.ts) uses speech, silence, and staleness signals to decide OFFER, HOLD, or DISCARD. Browser speech synthesis plays an offered finding. The [activity panel](apps/web/src/app/voice/page.tsx) displays the question, research status, finding and sources, and the decision with its reason.
 
-</div>
+The browser voice surface is the implementation being demonstrated. The [Google Meet Chrome extension design](docs/counterpoint/architecture.md) is a possible next surface; this repository does **not** contain that extension, Meet tab capture, or company-system connectors. The Portuguese [concept document](docs/counterpoint/README-counterpoint-pt.md) records the team's broader product direction.
 
-## Overview
+## Run from a clean clone
 
-Build for **[Agents, Everywhere: Bots, Channels, & More](https://aitinkerers.org/hackathons/global/agents-everywhere)**, the AI Tinkerers global hackathon on **September 12–13, 2026**. Choose your city on the event page for its local schedule. Put an agent inside a conversation, an app, a phone, or a physical environment. Make the context of that place essential to what it can do.
-
-This kit gives you three runnable templates, files to hand to your coding agent, and sponsor setup notes. Pick a user, a problem, and one complete interaction. You can use any stack; you do not need every sponsor or every surface.
-
-Your project and its core functionality must be created during the event. Existing libraries, templates, and starter code are allowed; describe what you reuse and what you build. Read [the rules](hackathon-rules.md), then follow your city's participant portal for the current deadline and judging criteria.
-
-## Get started
-
-Use Node.js 22+, then clone and install the kit:
+Use Node.js 22+ and Chrome. From the repository root:
 
 ```bash
-git clone https://github.com/CopilotKit/agents-everywhere-starter-kit.git
-cd agents-everywhere-starter-kit
+git clone https://github.com/F1NH4WK/counterpoint.git
+cd counterpoint
 npm ci
 cp .env.example .env
 ```
 
-This checkout has already picked a project: the live-brainstorm voice prototype described in [TEAM_HANDOFF.md](TEAM_HANDOFF.md), built on the web template's `/voice` route. Skip the template chooser below — the app is chosen. (If you are instead starting a *new* project from this kit, ignore this project-specific quickstart and use the chooser prompt in the [Templates](#templates) section.)
+Set these two values in the root `.env`:
 
-Set these in `.env`:
+```dotenv
+GEMINI_API_KEY=your-google-ai-studio-key
+EXA_API_KEY=your-exa-key
+```
 
-- `OPENAI_API_KEY` — required. Powers both the CopilotKit chat agent and the OpenAI Realtime voice session at `/voice`.
-- `EXA_API_KEY` — required for this project's actual point, background research. Without it, `search_web` returns a "not configured" message instead of real results — see [`packages/agent-core/src/capabilities/search.ts`](packages/agent-core/src/capabilities/search.ts).
-- Leave `AMBIGUOUS_API_KEY`, `CHANNEL_CODE`, and `INTELLIGENCE_API_KEY` unset. This project does not use the Slack Channel or the Ambiguous workplace-write flow from the inherited samples.
+Get a [Gemini API key](https://aistudio.google.com/apikey) and an [Exa API key](https://dashboard.exa.ai/api-keys). The keys are read by server routes and must stay out of the browser and version control. **No OpenAI API credits or key are required for Counterpoint's `/voice` flow.** The inherited starter-kit chat and Realtime endpoints have separate credentials and are not used by this flow.
 
-Start the one process this project needs:
+Start the single web process:
 
 ```bash
 npm run dev:web
 ```
 
-Open `http://localhost:3100/voice`, click **Start talking**, and grant microphone access. `http://localhost:3100/` is the inherited incident/Ambiguous demo — not part of this project.
+Open **http://127.0.0.1:3100/voice** in Chrome. Select English or Português (Brasil), click **Start talking**, and allow microphone access. In Chrome's microphone site settings, select the microphone you intend to use; virtual audio devices can appear as the default. Try “Does browser speech recognition already exist?” in English, or “Será que isso já existe?” in Portuguese. Watch the **Detected question**, **Research**, and **Decision** fields. When a finding is offered, Chrome speaks it and the panel shows its source links. Headphones help keep playback out of the microphone.
 
-Before relying on any change, run `npm run verify` (typecheck plus offline tests; no credentials required).
+Chrome speech recognition and playback must be available and microphone access granted. Exa and Gemini availability affect live research; if Gemini fails, the page can use a short Exa excerpt. Findings and transcript are session-only browser state.
 
-### CopilotKit onboarding
+## Verify
 
-The onboarding path below is for choosing and connecting a *new* template app. This project already uses the web template without Intelligence, so skip this unless you are adding managed conversation persistence.
-
-Use the team's maintained setup prompts in the same coding-agent session, with this checkout as the project root. Choose one app first; setup should adapt that app rather than scaffold a second starter over it.
-
-| Your starting point | Onboarding path |
-|---|---|
-| Slack template | Run `npm run channel:setup -- --no-clipboard`, then have your agent follow the prompt it prints. This installs the current `channels-setup` skill; the command itself does not create a Channel or sign you in. Tell the agent to connect **Slack** using `apps/channel` and read its bundled `build-channels-agent` skill. |
-| Web or React Native template | The existing model-provider setup runs without Intelligence. To add managed conversations with Rich Threads and other Intelligence capabilities, use the prompt below for the chosen app. |
-
-**Connect the selected app to CopilotKit Intelligence:**
-
-```text
-Read AGENTS.md and the selected app README. Connect that app to CopilotKit
-Intelligence using the current official onboarding workflow. This checkout
-already has CopilotKit: preserve the existing app, agent, model provider,
-tools, and approval behavior. For apps/mobile, keep Expo and the separate
-mobile install; its runtime is served by apps/web.
-Generate a fresh 12-character hexadecimal run ID, substitute it for RUN_ID,
-then run from the repository root:
-npx --yes copilotkit@latest onboard start --run RUN_ID
-Follow the instructions returned by the CLI and reuse that ID for this run.
-Show the integration plan before editing, and prove the selected app works
-before and after connecting Intelligence.
+```bash
+npm run typecheck
+npm test --workspace web
 ```
 
-The [official CopilotKit prompt](https://docs.copilotkit.ai/llms.txt) serves new projects, existing apps, and existing CopilotKit integrations. The [docs home](https://docs.copilotkit.ai/) also offers **Copy Prompt**, **Open in Codex**, and **Open in Claude Code**; add the selected template's context when using those entry points. For Slack, use the [Channels onboarding path](https://docs.copilotkit.ai/slack) above. Finish one selected workflow before starting another.
+These checks cover the detector and gate; they do not substitute for a live microphone, Exa, Gemini, and playback rehearsal. The inherited root `npm run verify` currently has an unrelated test-glob issue.
 
-Follow the CLI's returned instructions for sign-in, project selection, credentials, and verification. Keep credentials out of chat and preserve existing `.env` values. The starter reads `INTELLIGENCE_API_KEY`; if setup provisions `CPK_INTELLIGENCE_API_KEY`, map it to the variable the selected runtime actually reads. Review any required package upgrades together with the tested Channels/runtime pair and `@ag-ui/client` override. Intelligence onboarding changes the app; installing a skill or adding an API key alone does not complete that integration.
-
-## Templates
-
-These starting points serve different kinds of context. **CopilotKit Channels** brings the Slack agent into the conversation; **CopilotKit React** connects the web agent to the app people are using; **CopilotKit React Native** brings the same agent pattern onto a phone.
-
-### 1. Slack — an agent that joins the thread
-
-**OpenAI + CopilotKit Channels + Exa**
-
-An agent reads what people already said, researches with Exa, and answers in the same thread with native cards and source links. Start with a support conversation, a research discussion, or a team decision.
-
-The included Slack app supplies thread history, subscriptions, search, and Channels UI. Configure your model, Exa, and a managed Channel, then run `npm run dev:slack`. No public tunnel is needed. Teams or other chat platforms can use the same Channels pattern, but this starter ships the Slack app.
-
-**[Use the Slack template →](apps/channel/)**
-
-### 2. Web — an agent inside your app
-
-**OpenAI + CopilotKit React + Ambiguous AI**
-
-An agent sees the page you are on and turns a request into a real workplace record you can still find after a refresh. Adapt it to customer follow-ups, a project workspace, or a personal planning app.
-
-The included web app supplies page context, frontend tools, agent-rendered UI, and a browser approval step. Connect an Ambiguous AI workspace, then run `npm run dev:web`; approved follow-ups are saved through the server and can be read back after refresh.
-
-**[Use the web template →](apps/web/)**
-
-### 3. React Native — an agent in your pocket
-
-**OpenAI or OpenRouter + CopilotKit React Native**
-
-A mobile agent reads app state, renders native cards, and waits for a tap before changing local sample data. Start with a personal finance assistant, a field checklist, an inventory counter, or any workflow where phone context and approval matter.
-
-The included Expo app supplies seeded finance state, native rendered tool UI, a human-in-the-loop expense approval, and a mobile-specific CopilotKit runtime endpoint served by the web app. Configure your model provider, start `npm run dev:web`, then run the mobile app from `apps/mobile`.
-
-**[Use the React Native template →](apps/mobile/)**
-
-### Make the demo yours
-
-The supplied on-call and finance assistants are **infrastructure examples**: read ambient context, call a tool, render useful UI, and return a verifiable result. Choose a different user, problem, dataset, and interaction; the goal is your own project, not another version of the starter scenario.
-
-Use the [demo prompts](dev-docs/demo-prompts.md) to learn how the pieces connect, then replace the sample domain. In the Slack sample incident flow, approval cards record decisions without executing production actions. In the web follow-up flow, the page approval button saves the reviewed Ambiguous task. In the mobile finance flow, approval changes local in-memory sample data. Enforce the same kind of write boundary around any external action you add.
-
-Want another surface pattern? The web app also includes a voice route, and the shared agent can connect to remote MCP tools when configured. The event surfaces are inspiration, not separate tracks or a requirement to build multiple apps.
-
-## Coding agent
-
-Give your agent these files before it starts coding:
-
-| File | What it provides |
-|---|---|
-| [hackathon-overview.md](hackathon-overview.md) | The challenge, four surfaces, and official judging criteria |
-| [hackathon-rules.md](hackathon-rules.md) | Build eligibility, inherited code, and required deliverables |
-| [using-sponsor-tools.md](using-sponsor-tools.md) | Every sponsor featured in this kit: access, authentication, configuration, and a first working call |
-| [AGENTS.md](AGENTS.md) | Repository conventions and verification commands |
-| [Channels skill](.agents/skills/build-channels-agent/SKILL.md) | Verified Channels APIs for the Slack template |
-
-The app READMEs provide launch commands, files to customize, and a concrete result to check. Start with one template and add a second surface only if it helps your user.
-
-## Resources
-
-| Need | Go here |
-|---|---|
-| Event details, deadline, and judging | [Find your city](https://aitinkerers.org/hackathons/global/agents-everywhere), then open its participant portal and handbook |
-| OpenAI agent development | [Agents SDK quickstart](https://openai.github.io/openai-agents-js/guides/quickstart/) |
-| OpenRouter access and model choice | [Quickstart](https://openrouter.ai/docs/quickstart) · [Keys](https://openrouter.ai/keys) · [Model catalog](https://openrouter.ai/models) · [Model switching](dev-docs/model-switching.md) |
-| CopilotKit app development | [Docs](https://docs.copilotkit.ai/) · [Tools and context](dev-docs/tools-and-context.md) · [Discord channel for technical questions](https://discord.com/channels/1122926057641742418/1548038338848489532) |
-| CopilotKit Channels | [Channels guide](https://copilotkit.ai/channels-guide.md) · [Screenshot walkthrough](dev-docs/channels-sdk-walkthrough/README.md) · [OpenTag example app](https://github.com/CopilotKit/OpenTag) |
-| Exa quickstart | [Search API guide](https://exa.ai/docs/reference/search-api-guide) · [Kit setup](using-sponsor-tools.md#exa) |
-| Auth0 API authorization | [Node API](https://auth0.com/docs/quickstart/backend/nodejs) · [Kit setup](using-sponsor-tools.md#auth0) |
-| Ambiguous AI quickstart | [Developer guide](https://www.ambiguous.ai/llms.txt) · [Kit setup](using-sponsor-tools.md#ambiguous-ai) |
-| Rehearse and debug | [Demo prompts](dev-docs/demo-prompts.md) · [Troubleshooting](dev-docs/troubleshooting.md) |
-| Prepare your entry | [Submission checklist](SUBMISSION.md) |
-
-For credit redemption instructions, choose your city on the [global event page](https://aitinkerers.org/hackathons/global/agents-everywhere) and check its participant portal's **Credits & Offers** section.
-
-For technical questions during the event, check your city's participant portal and ask your local organizers.
-
-For the Slack/web workspaces, `npm run verify` runs typechecks and offline tests without credentials. The mobile app has its own install, tests, typecheck, and Metro export checks under `apps/mobile`. Each app reports missing configuration when the relevant integration is used. Live sponsor calls and platform delivery require your accounts. See [developer docs](dev-docs/README.md) for detailed setup and deployment.
+The repository began with the [Agents, Everywhere starter kit](https://github.com/CopilotKit/agents-everywhere-starter-kit). Its CopilotKit incident web app at `/`, Slack sample, and mobile sample are included as reference code, not Counterpoint features. See [SUBMISSION.md](SUBMISSION.md) for the inherited-versus-built breakdown and current verification limits.
