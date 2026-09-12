@@ -20,19 +20,13 @@ Choose your city on the [global event page](https://aitinkerers.org/hackathons/g
 
 The concept (recorded in [TEAM_HANDOFF.md](TEAM_HANDOFF.md)): an agent that joins a live two-person brainstorm over one shared microphone, silently starts read-only research when someone raises a concrete uncertainty, and offers a short sourced finding only if the topic is still relevant when it finishes — holding or discarding it otherwise.
 
-Verified, real progress as of this writing:
+Implemented code as of this writing:
 
-- A feasibility spike in `apps/web/src/app/voice/page.tsx` proving the two mechanics the concept depends on: (1) the Realtime session can be configured to detect speech without auto-responding (`turnDetection: { type: "semantic_vad", createResponse: false, interruptResponse: false }`), so the agent can stay silent while humans talk, and (2) an application-controlled speaking gate — explicit "Ask agent to speak" / "Stop agent" buttons calling `session.transport.sendEvent({ type: "response.create" })` and `session.interrupt()` — with a visible transport-event log confirming the gate actually held or cancelled a response.
-- **As of this writing, this change is uncommitted in the working tree** (see `git diff apps/web/src/app/voice/page.tsx`) and was still being iterated on by a teammate's agent while this submission file was written. Confirm it has landed on `main` before citing it as final.
+- `apps/web/src/lib/uncertainty.ts` detects a narrow set of researchable questions from transcript text; `uncertainty.test.ts` covers clear, rhetorical, statement, and incremental cases.
+- `apps/web/src/lib/participation.ts` decides OFFER, HOLD, or DISCARD from timestamped speech, question, finding, and topic-change events; `participation.test.ts` covers speech, silence, staleness, and topic changes.
+- `apps/web/src/app/voice/page.tsx` listens for raw input-transcription deltas, starts an asynchronous call to the inherited Exa route, retains at most two prepared findings, and displays sources and decision reasons in the activity panel. Explicit topic-change phrases and elapsed time can discard a finding.
 
-<!-- TODO(team): the uncertainty detector, the background-research trigger, the
-relevance check, and the offer/hold/discard decision logic described in
-TEAM_HANDOFF.md's prototype scope are NOT implemented as of this writing — no
-files exist yet under `apps/web/src/lib/brainstorm/` or an activity-panel
-component under `apps/web/src/components/`. Do not describe them as built
-until they exist and pass typecheck/tests; when they land, list the actual
-files here (module paths, the panel component, and any new tests) in place of
-this TODO. Do not invent file paths or a demo result for this section. -->
+**Fallback status:** application-controlled speech was not proved. The live browser attempt reached `/voice` but OpenAI rejected the configured `OPENAI_API_KEY` because it is a placeholder. No A/B/C speech-control result could be observed. The current page leaves normal Realtime voice responses enabled and labels OFFER/HOLD/DISCARD as an **advisory decision layer that is not wired to speech timing**. Do not claim that the agent only speaks when OFFER is shown. The local search route was called and returned “no EXA_API_KEY”; no live Exa finding has been verified.
 
 ## Title and description
 
@@ -50,18 +44,12 @@ Two people mid-brainstorm who want a research assistant that listens without int
 
 **Why the context matters**
 
-<!-- TODO(team): fill in once the uncertainty-detection and relevance-check
-logic exist. The honest answer today is: the agent knows what was said (via
-the Realtime session's transcript) and can be prevented from responding
-automatically (verified in the `apps/web/src/app/voice/page.tsx` spike), but
-it does not yet decide *when* to speak based on the conversation's content —
-that decision logic is what would make "living in this surface" load-bearing,
-and it is not built yet. -->
+The decision layer uses what participants say and when they speak to assess whether a researched finding remains useful. It is visible on the voice page. Its connection to actual speech timing remains unverified and disabled in the fallback build.
 
 **Sponsor technologies used**
 
-- **OpenAI Realtime** — the WebRTC voice session at `/voice` (`apps/web/src/app/voice/page.tsx`), configured with `semantic_vad` turn detection and `createResponse: false` so speech can be held without an automatic reply.
-- **Exa** — `packages/agent-core/src/capabilities/search.ts`, exposed to the voice agent as the `search_web` tool via `apps/web/src/app/api/search/route.ts`. <!-- TODO(team): this is the inherited on-demand search tool, not yet the automatic background-research trigger the concept calls for; note that distinction in the demo. -->
+- **OpenAI Realtime** — the inherited WebRTC voice session at `/voice`; the current fallback uses its normal response timing. A valid key and live test are still required.
+- **Exa** — the inherited server-side search route is now called asynchronously when the new detector finds a question. `EXA_API_KEY` is absent in the tested environment, so live search is not yet demonstrated.
 - CopilotKit Channels/React and Ambiguous AI, present in the inherited starter kit, are not used by this project's surface.
 
 ## Evidence for the judging criteria
@@ -77,10 +65,10 @@ Judges score each of the four official criteria from 1–5. This checklist helps
 
 **Our evidence, by criterion**
 
-- **Core Requirements & Functionality** — <!-- TODO(team): not yet demonstrable end-to-end. --> The only verified live path today is: open `/voice`, connect a Realtime session, speak, confirm the agent stays silent (`turnDetection.createResponse: false` in `apps/web/src/app/voice/page.tsx`), then manually trigger or cancel a response and see it reflected in the on-page event log. That is a control-path spike, not the research-and-participation workflow. Do not claim the full workflow runs until the uncertainty→research→offer/hold/discard chain exists and has been run live with two speakers per TEAM_HANDOFF.md's rehearsal step.
-- **Innovation & Theme Alignment** — The intended original interaction (an agent that researches silently and interjects only when its finding is still relevant) is written up in TEAM_HANDOFF.md's "Confirmed direction" section, but the code that would let a judge see it — the uncertainty detector and relevance check — does not exist yet. <!-- TODO(team): once built, point here at the specific module that decides offer vs. hold vs. discard, and contrast a run with that module disabled. -->
-- **Technical Execution & Integration** — Real, checkable integration points: the ephemeral-secret exchange in `apps/web/src/app/api/realtime-token/route.ts` (server never exposes `OPENAI_API_KEY` to the browser), and the server-side Exa proxy in `apps/web/src/app/api/search/route.ts` (browser tool never sees `EXA_API_KEY`; returns an explicit "not configured" string rather than failing silently when the key is absent — `packages/agent-core/src/capabilities/search.ts:25`). The cancellation path is demonstrated: `cancelResponse` in `apps/web/src/app/voice/page.tsx` calls `session.interrupt()` and the event log shows it took effect. <!-- TODO(team): no evidence yet for the research call's own failure/cancellation path (e.g., a stale finding discarded mid-research), since that code doesn't exist. -->
-- **Usefulness & Agentic Experience** — <!-- TODO(team): cannot honestly claim this yet. --> The manual "Ask agent to speak" / "Stop agent" controls in `apps/web/src/app/voice/page.tsx` show a real, working form of user control over agent speech, which is a prerequisite for the intended "offer only at an appropriate opening" behavior — but the behavior itself (the agent deciding when to offer) is not built, so there is no evidence yet of the agent saving anyone research time unattended.
+- **Core Requirements & Functionality** — The detector, asynchronous search trigger, two-finding queue, decision rules, and visible panel are implemented. Typecheck and 42 web tests pass. A full two-person, live-credential run has not been completed.
+- **Innovation & Theme Alignment** — The new modules assess uncertainty, floor availability, and staleness. The fallback's panel exposes those decisions, while Realtime still controls its own speech timing.
+- **Technical Execution & Integration** — The inherited token route keeps the OpenAI key server-side and the Exa route keeps its key server-side. A browser attempt confirmed the token route rejects the placeholder OpenAI key; a local route call confirmed the missing-Exa message. Speech cancellation was not verified live.
+- **Usefulness & Agentic Experience** — The panel shows why a finding is prepared, held, or discarded. Its real-world benefit and spoken turn-taking still need a live rehearsal with two people and valid credentials.
 
 - [ ] We can point to visible evidence for every criterion
 - [ ] We distinguish live services, sample data, session-only state, and standalone recipes
