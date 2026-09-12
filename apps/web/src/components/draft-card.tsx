@@ -113,7 +113,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
   return (
     <section className="ck-card" aria-labelledby="draft-card-title">
       <h3 id="draft-card-title">Draft a Slack update</h3>
-      <p className="ck-local-note">Slack: {slackConfigured === true ? "webhook configured; delivery is checked when you send" : slackConfigured === false ? "not connected — set SLACK_WEBHOOK_URL in the root .env and restart the app" : "checking configuration"}</p>
+      {slackConfigured === true && <p className="ck-local-note">Slack webhook available; delivery is checked when you send.</p>}
       <button
         type="button"
         className="ck-btn"
