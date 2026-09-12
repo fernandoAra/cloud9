@@ -80,8 +80,10 @@ export default function VoicePage() {
   });
   const [humanSpeaking, setHumanSpeaking] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
+  const [playbackMessage, setPlaybackMessage] = useState("No audio requested yet.");
 
   const recognitionRef = useRef<BrowserRecognition | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const runningRef = useRef(false);
   const participationRef = useRef(initialParticipationState);
   const findingsRef = useRef<PreparedFinding[]>([]);
@@ -99,17 +101,46 @@ export default function VoicePage() {
     if (!runningRef.current || spokenRef.current.has(finding.questionId)) return;
     spokenRef.current.add(finding.questionId);
     const utterance = new SpeechSynthesisUtterance(finding.summary);
+    utteranceRef.current = utterance;
     utterance.lang = language;
     utterance.rate = 1.05;
+    setPlaybackMessage("Finding sent to Chrome speech playback; waiting for audio to start.");
     utterance.onstart = () => {
       participationRef.current = transition(participationRef.current, { type: "agent_audio_started", at: Date.now(), candidateId: finding.questionId }).state;
       setAgentSpeaking(true);
+      setPlaybackMessage("Chrome started speaking the finding.");
     };
-    utterance.onend = utterance.onerror = () => {
+    utterance.onend = () => {
       participationRef.current = transition(participationRef.current, { type: "agent_audio_ended", at: Date.now(), candidateId: finding.questionId }).state;
       setAgentSpeaking(false);
+      utteranceRef.current = null;
+      setPlaybackMessage("Chrome finished speaking the finding.");
+    };
+    utterance.onerror = (event) => {
+      participationRef.current = transition(participationRef.current, { type: "agent_audio_ended", at: Date.now(), candidateId: finding.questionId }).state;
+      setAgentSpeaking(false);
+      utteranceRef.current = null;
+      setPlaybackMessage(`Chrome speech playback failed: ${event.error}.`);
     };
     window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, [language]);
+
+  const testSpeaker = useCallback(() => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance("Counterpoint speaker test.");
+    utteranceRef.current = utterance;
+    utterance.lang = language;
+    setPlaybackMessage("Speaker test sent to Chrome; waiting for audio to start.");
+    utterance.onstart = () => setPlaybackMessage("Chrome started the speaker test.");
+    utterance.onend = () => {
+      utteranceRef.current = null;
+      setPlaybackMessage("Chrome finished the speaker test.");
+    };
+    utterance.onerror = (event) => {
+      utteranceRef.current = null;
+      setPlaybackMessage(`Chrome speaker test failed: ${event.error}.`);
+    };
     window.speechSynthesis.speak(utterance);
   }, [language]);
 
@@ -130,7 +161,7 @@ export default function VoicePage() {
     }
     const latest = [...current].reverse().find((item) => !spokenRef.current.has(item.questionId));
     if (!latest) {
-      setDecision({ action: "HOLD", reason: current.length ? "The prepared finding was spoken." : "Waiting for a prepared finding." });
+      setDecision({ action: "HOLD", reason: current.length ? "Playback was requested for the prepared finding; see Audio status." : "Waiting for a prepared finding." });
       return;
     }
     const next = decideParticipation(participationRef.current, now, latest.questionId);
@@ -221,6 +252,7 @@ export default function VoicePage() {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     window.speechSynthesis.cancel();
+    utteranceRef.current = null;
     if (tickRef.current) clearInterval(tickRef.current);
     if (restartRef.current) clearTimeout(restartRef.current);
     tickRef.current = null;
@@ -260,6 +292,7 @@ export default function VoicePage() {
     setResearchStatus("idle");
     setResearchMessage("Waiting for a researchable question.");
     setDecision({ action: "HOLD", reason: "Waiting for a prepared finding." });
+    setPlaybackMessage("No audio requested yet.");
     setError(undefined);
     setStatus("connecting");
 
@@ -354,6 +387,7 @@ export default function VoicePage() {
           </button>
         )}
         <span className="ck-status" data-status={status}>{status}</span>
+        <button type="button" className="ck-btn" onClick={testSpeaker}>Test speaker</button>
       </div>
 
       <section className="ck-card" style={{ marginTop: "1.5rem" }} aria-label="Brainstorm activity">
@@ -363,6 +397,7 @@ export default function VoicePage() {
         <p><strong>Detected question:</strong> {question ? `${question.question} (${Math.round(question.confidence * 100)}% pattern confidence)` : "None yet"}</p>
         <p><strong>Research:</strong> {researchStatus} — {researchMessage}</p>
         <p><strong>Decision:</strong> {decision.action} — {decision.reason}</p>
+        <p><strong>Audio:</strong> {playbackMessage}</p>
 
         {findings.map((finding) => (
           <article key={finding.questionId} className="ck-card" style={{ marginTop: "1rem" }}>
