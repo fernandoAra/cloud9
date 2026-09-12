@@ -11,6 +11,7 @@ import {
 } from "@/lib/participation";
 
 type Status = "idle" | "connecting" | "live" | "error";
+type InputSource = "microphone" | "meet-tab";
 type ResearchStatus = "idle" | "searching" | "synthesizing" | "ready" | "unavailable";
 type SearchHit = { title: string; url: string; highlight?: string };
 type PreparedFinding = {
@@ -33,7 +34,7 @@ type BrowserRecognition = {
   onspeechend: (() => void) | null;
   onresult: ((event: RecognitionEvent) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
-  start(): void;
+  start(audioTrack?: MediaStreamTrack): void;
   stop(): void;
 };
 type SpeechBrowser = Window & {
@@ -66,6 +67,8 @@ function shortFinding(hit: SearchHit): string {
 
 export default function VoicePage() {
   const [status, setStatus] = useState<Status>("idle");
+  const [inputSource, setInputSource] = useState<InputSource>("microphone");
+  const [liveSource, setLiveSource] = useState<InputSource | null>(null);
   const [language, setLanguage] = useState("en-US");
   const [error, setError] = useState<string>();
   const [transcript, setTranscript] = useState<string[]>([]);
@@ -83,6 +86,7 @@ export default function VoicePage() {
   const [playbackMessage, setPlaybackMessage] = useState("No audio requested yet.");
 
   const recognitionRef = useRef<BrowserRecognition | null>(null);
+  const captureStreamRef = useRef<MediaStream | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const runningRef = useRef(false);
   const participationRef = useRef(initialParticipationState);
@@ -251,6 +255,8 @@ export default function VoicePage() {
     runningRef.current = false;
     recognitionRef.current?.stop();
     recognitionRef.current = null;
+    captureStreamRef.current?.getTracks().forEach((track) => track.stop());
+    captureStreamRef.current = null;
     window.speechSynthesis.cancel();
     utteranceRef.current = null;
     if (tickRef.current) clearInterval(tickRef.current);
@@ -259,10 +265,11 @@ export default function VoicePage() {
     restartRef.current = null;
     setHumanSpeaking(false);
     setAgentSpeaking(false);
+    setLiveSource(null);
     setStatus("idle");
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async (source: InputSource) => {
     disconnect();
     const browser = window as SpeechBrowser;
     const Recognition = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
@@ -272,6 +279,53 @@ export default function VoicePage() {
       return;
     }
     const generation = generationRef.current;
+    let audioTrack: MediaStreamTrack | undefined;
+    if (source === "meet-tab") {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        setError("This browser cannot capture tab audio. Use Chrome or switch to Microphone.");
+        setStatus("error");
+        return;
+      }
+      setError(undefined);
+      setStatus("connecting");
+      try {
+        // The browser requires video in the request even though Counterpoint
+        // consumes audio only. Check the selected surface, then stop video.
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        const videoTracks = stream.getVideoTracks();
+        const displaySurface = videoTracks[0]?.getSettings().displaySurface;
+        videoTracks.forEach((track) => track.stop());
+        if (generation !== generationRef.current) {
+          stream.getAudioTracks().forEach((track) => track.stop());
+          return;
+        }
+        if (displaySurface && displaySurface !== "browser") {
+          stream.getAudioTracks().forEach((track) => track.stop());
+          setError("Select the Google Meet browser tab, not an entire screen or window, then enable Share tab audio.");
+          setStatus("error");
+          return;
+        }
+        audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack || audioTrack.readyState !== "live") {
+          stream.getAudioTracks().forEach((track) => track.stop());
+          setError('No tab audio was shared. Select the Google Meet tab and re-share with "Share tab audio" checked.');
+          setStatus("error");
+          return;
+        }
+        captureStreamRef.current = stream;
+        audioTrack.addEventListener("ended", () => {
+          if (generation !== generationRef.current) return;
+          disconnect();
+          setError("Meet tab sharing ended. Choose Listen to a Meet tab to share it again.");
+          setStatus("error");
+        }, { once: true });
+      } catch (cause) {
+        if (generation !== generationRef.current) return;
+        setError(cause instanceof Error ? `Meet tab sharing failed: ${cause.message}` : "Meet tab sharing failed.");
+        setStatus("error");
+        return;
+      }
+    }
     const recognition = new Recognition();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -298,6 +352,7 @@ export default function VoicePage() {
 
     recognition.onstart = () => {
       recognitionRunRef.current += 1;
+      setLiveSource(source);
       setStatus("live");
     };
     recognition.onspeechstart = () => {
@@ -334,9 +389,10 @@ export default function VoicePage() {
     };
     recognition.onerror = (event) => {
       if (event.error === "no-speech" || event.error === "aborted") return;
-      setError(`Microphone recognition failed: ${event.error}.`);
+      setError(`Speech recognition failed on ${source === "meet-tab" ? "Meet tab" : "Microphone"}: ${event.error}.`);
       if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "network") {
-        runningRef.current = false;
+        disconnect();
+        setError(`Speech recognition failed on ${source === "meet-tab" ? "Meet tab" : "Microphone"}: ${event.error}.`);
         setStatus("error");
       }
     };
@@ -344,22 +400,28 @@ export default function VoicePage() {
       if (!runningRef.current || generation !== generationRef.current) return;
       restartRef.current = setTimeout(() => {
         if (!runningRef.current) return;
-        try { recognition.start(); } catch { setStatus("error"); setError("Speech recognition could not restart."); }
+        try { recognition.start(audioTrack); } catch {
+          disconnect();
+          setStatus("error");
+          setError("Speech recognition could not restart.");
+        }
       }, 150);
     };
     try {
-      recognition.start();
+      recognition.start(audioTrack);
       tickRef.current = setInterval(() => evaluateDecision(Date.now()), 250);
     } catch (cause) {
-      runningRef.current = false;
+      disconnect();
       setError(cause instanceof Error ? cause.message : String(cause));
       setStatus("error");
     }
   }, [detectFromTranscript, disconnect, evaluateDecision, language]);
 
   useEffect(() => () => {
+    generationRef.current += 1;
     runningRef.current = false;
     recognitionRef.current?.stop();
+    captureStreamRef.current?.getTracks().forEach((track) => track.stop());
     window.speechSynthesis.cancel();
     if (tickRef.current) clearInterval(tickRef.current);
     if (restartRef.current) clearTimeout(restartRef.current);
@@ -373,6 +435,12 @@ export default function VoicePage() {
       <p className="ck-dek">A quiet research partner for live brainstorming. Ask a concrete question; Counterpoint researches it while you keep talking.</p>
 
       <div className="ck-actions" style={{ marginTop: "2rem" }}>
+        <label>Audio source{" "}
+          <select value={inputSource} onChange={(event) => setInputSource(event.target.value as InputSource)} disabled={status === "live" || status === "connecting"}>
+            <option value="microphone">Microphone</option>
+            <option value="meet-tab">Meet tab</option>
+          </select>
+        </label>
         <label>Recognition language{" "}
           <select value={language} onChange={(event) => setLanguage(event.target.value)} disabled={status === "live" || status === "connecting"}>
             <option value="en-US">English</option>
@@ -382,8 +450,8 @@ export default function VoicePage() {
         {status === "live" ? (
           <button type="button" className="ck-btn" onClick={disconnect}>End call</button>
         ) : (
-          <button type="button" className="ck-btn ck-btn--primary" onClick={connect} disabled={status === "connecting"}>
-            {status === "connecting" ? "Connecting…" : "Start talking"}
+          <button type="button" className="ck-btn ck-btn--primary" onClick={() => void connect(inputSource)} disabled={status === "connecting"}>
+            {status === "connecting" ? "Connecting…" : inputSource === "meet-tab" ? "Listen to a Meet tab" : "Start talking"}
           </button>
         )}
         <span className="ck-status" data-status={status}>{status}</span>
@@ -393,6 +461,7 @@ export default function VoicePage() {
       <section className="ck-card" style={{ marginTop: "1.5rem" }} aria-label="Brainstorm activity">
         <h2>Live research and participation</h2>
         <p>Chrome handles speech recognition and playback. Gemini Flash-Lite drafts from Exa sources. Counterpoint speaks only on OFFER; new human speech cancels playback.</p>
+        <p><strong>Live source:</strong> {liveSource === "meet-tab" ? "Meet tab" : liveSource === "microphone" ? "Microphone" : "None"}</p>
         <p><strong>Room:</strong> {agentSpeaking ? "Counterpoint is speaking" : humanSpeaking ? "A person is speaking" : "No speech detected"}</p>
         <p><strong>Detected question:</strong> {question ? `${question.question} (${Math.round(question.confidence * 100)}% pattern confidence)` : "None yet"}</p>
         <p><strong>Research:</strong> {researchStatus} — {researchMessage}</p>
@@ -423,7 +492,9 @@ export default function VoicePage() {
         <article className="ck-card ck-card--gate" style={{ marginTop: "1.5rem" }}>
           <h3>Voice unavailable</h3>
           <p>{error}</p>
-          <p>Use Chrome on localhost or HTTPS and allow microphone access.</p>
+          <p>{inputSource === "meet-tab"
+            ? 'Use Chrome on localhost or HTTPS, select the Google Meet tab, and enable "Share tab audio".'
+            : "Use Chrome on localhost or HTTPS and allow microphone access."}</p>
         </article>
       )}
 
