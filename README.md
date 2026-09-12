@@ -29,21 +29,27 @@ npm ci
 cp .env.example .env
 ```
 
-Choose one template and configure only the credentials it needs. Slack and web use the root install; React Native has its own install under `apps/mobile` because Expo pins its React Native stack separately.
+This checkout has already picked a project: the live-brainstorm voice prototype described in [TEAM_HANDOFF.md](TEAM_HANDOFF.md), built on the web template's `/voice` route. Skip the template chooser below — the app is chosen. (If you are instead starting a *new* project from this kit, ignore this project-specific quickstart and use the chooser prompt in the [Templates](#templates) section.)
 
-Paste this into your coding agent:
+Set these in `.env`:
 
-```text
-Read AGENTS.md, hackathon-overview.md, hackathon-rules.md, and
-using-sponsor-tools.md. Help me choose one template app README for my idea,
-then adapt this checkout into our own project. Ask me who it is for and
-what the agent should do in that setting. Follow this README's CopilotKit
-onboarding section for the selected app; keep its existing infrastructure.
-Use only the integrations the idea needs. Verify a complete interaction and
-prepare SUBMISSION.md, distinguishing inherited code from our event work.
+- `OPENAI_API_KEY` — required. Powers both the CopilotKit chat agent and the OpenAI Realtime voice session at `/voice`.
+- `EXA_API_KEY` — required for this project's actual point, background research. Without it, `search_web` returns a "not configured" message instead of real results — see [`packages/agent-core/src/capabilities/search.ts`](packages/agent-core/src/capabilities/search.ts).
+- Leave `AMBIGUOUS_API_KEY`, `CHANNEL_CODE`, and `INTELLIGENCE_API_KEY` unset. This project does not use the Slack Channel or the Ambiguous workplace-write flow from the inherited samples.
+
+Start the one process this project needs:
+
+```bash
+npm run dev:web
 ```
 
+Open `http://localhost:3100/voice`, click **Start talking**, and grant microphone access. `http://localhost:3100/` is the inherited incident/Ambiguous demo — not part of this project.
+
+Before relying on any change, run `npm run verify` (typecheck plus offline tests; no credentials required).
+
 ### CopilotKit onboarding
+
+The onboarding path below is for choosing and connecting a *new* template app. This project already uses the web template without Intelligence, so skip this unless you are adding managed conversation persistence.
 
 Use the team's maintained setup prompts in the same coding-agent session, with this checkout as the project root. Choose one app first; setup should adapt that app rather than scaffold a second starter over it.
 
