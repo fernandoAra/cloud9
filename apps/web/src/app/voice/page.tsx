@@ -161,9 +161,10 @@ export default function VoicePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: detected.question, sources: hits }),
         });
-        const result = (await synthesis.json()) as { text?: string; error?: string };
+        const result = (await synthesis.json()) as { text?: string; model?: string; error?: string };
         if (!synthesis.ok || !result.text) throw new Error(result.error ?? "Gemini returned no text.");
         summary = result.text;
+        synthesisNote = `${result.model ?? "Gemini Flash-Lite"} prepared this contribution.`;
       } catch (cause) {
         synthesisNote = `Gemini unavailable; using an Exa source excerpt. ${cause instanceof Error ? cause.message : ""}`;
       }
