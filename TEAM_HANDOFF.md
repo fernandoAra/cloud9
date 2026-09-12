@@ -11,9 +11,9 @@ The repo was copied from the Agents, Everywhere starter kit. The browser `apps/w
 ## Current state and cautions
 
 - At this handoff's creation, the checkout was on `main` with an existing uncommitted edit to `AGENTS.md`. Do not overwrite or revert that edit. The latest commit contains an older project brief focused on a turn-gap gate; the working-tree edit removes that brief. The current concept above supersedes that older brief for planning.
-- `/voice` already has a WebRTC Realtime session, a server endpoint for an ephemeral client secret, and a server-side Exa search route. It currently displays history updates and allows ordinary voice-agent responses. It does **not** implement early uncertainty detection, background research, relevance checks, or an application-controlled speaking gate.
+- `/voice` has the inherited WebRTC session and token/search routes. This chat added raw input-transcription-delta handling, uncertainty detection, asynchronous search, a two-finding queue, relevance decisions, and an activity panel. It remains in the documented fallback: ordinary voice-agent responses are enabled, while OFFER/HOLD/DISCARD are advisory and do not control speech.
 - On 2026-09-12, `npm run typecheck` passed. The web workspace's 34 tests passed. Root `npm run verify` failed because the inherited agent-core and channel test scripts pass quoted `**` globs that Node did not resolve. Live microphone and search behavior were not verified.
-- The current shell resolves Node.js `v20.20.2`, while the kit calls for Node.js 22+. Root `.env` has `OPENAI_API_KEY` configured but no `EXA_API_KEY` (presence checked without printing values). The research lane needs a working search credential or an explicitly chosen alternative. Obtain/configure it in parallel with the first feasibility spike; do not place credentials in this file.
+- The current shell resolves Node.js `v20.20.2`, while the kit calls for Node.js 22+. The browser token request proved that root `.env` contains a placeholder `OPENAI_API_KEY` (`stub-replace-me`), so no live voice test succeeded. A local call to `/api/search` returned the explicit missing-`EXA_API_KEY` result, so no live Exa finding succeeded. Do not place credentials in this file.
 
 ## Prototype scope — accepted in principle, time-box corrected to 2.5 hours
 
@@ -39,7 +39,7 @@ Agree on interfaces before editing shared files. One contributor owns the Realti
 
 | Owner | Status | Files | Next handoff |
 | --- | --- | --- | --- |
-| Codex in this chat | Replanned for 2.5 hours; no prototype code started | `TEAM_HANDOFF.md` | Assign integrator and run the 15-minute feasibility spike |
+| Codex in this chat | Fallback implementation committed; typecheck and 42 web tests pass; browser panel rendered. Live A/B/C and Exa research blocked by placeholder/missing keys. No push. | `AGENTS.md`, `TEAM_HANDOFF.md`, `apps/web/src/lib/uncertainty.ts` and test, `apps/web/src/lib/participation.ts` and test, `apps/web/src/app/voice/page.tsx`, `SUBMISSION.md` | Set valid server-side OpenAI and Exa keys, run a two-person rehearsal, record actual results. |
 | Other teammate / agents | Unknown | Unknown | Add current work before overlapping edits |
 
 Update this table at the start and end of each work session. Record what changed, what was checked, what failed, and the next safe step. Keep claims about live integrations separate from unit tests and sample data.
