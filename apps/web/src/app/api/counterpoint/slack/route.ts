@@ -1,4 +1,8 @@
 /** Post a drafted message to Slack via an incoming webhook, if one is configured. */
+export async function GET() {
+  return Response.json({ configured: Boolean(process.env.SLACK_WEBHOOK_URL?.trim()) });
+}
+
 export async function POST(request: Request) {
   let body: { text?: unknown; issue?: unknown };
   try {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 type MatchedIssue = { number: number; title: string; url: string };
-export type AutomaticDraft = { id: number; person: string; issue: MatchedIssue; draft: string };
+export type AutomaticDraft = { id: number; person: string; issue: MatchedIssue | null; draft: string };
 
 type SendState =
   | { status: "idle" }
@@ -24,6 +24,14 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
   const [draftError, setDraftError] = useState("");
   const [sendState, setSendState] = useState<SendState>({ status: "idle" });
   const [recipient, setRecipient] = useState("");
+  const [slackConfigured, setSlackConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void fetch("/api/counterpoint/slack")
+      .then((response) => response.json())
+      .then((data: { configured?: boolean }) => setSlackConfigured(data.configured === true))
+      .catch(() => setSlackConfigured(null));
+  }, []);
 
   useEffect(() => {
     if (!automaticDraft) {
@@ -55,7 +63,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || `Draft request failed (HTTP ${response.status}).`);
-      setIssue(data.issue);
+      setIssue(data.issue ?? null);
       setDraft(data.draft);
     } catch (error) {
       setIssue(null);
@@ -93,6 +101,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
   return (
     <section className="ck-card" aria-labelledby="draft-card-title">
       <h3 id="draft-card-title">Draft a Slack update</h3>
+      <p className="ck-local-note">Slack: {slackConfigured === true ? "webhook configured; delivery is checked when you send" : slackConfigured === false ? "not connected — set SLACK_WEBHOOK_URL in the root .env and restart the app" : "checking configuration"}</p>
       <button
         type="button"
         className="ck-btn"
@@ -108,15 +117,12 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
         </p>
       )}
 
-      {issue && (
+      {draft && (
         <>
-          {recipient && <p role="status" className="ck-local-note">Draft for {recipient} — awaiting your approval. Nothing is sent until you click Send to Slack.</p>}
-          <p className="ck-local-note">
-            Matched to{" "}
-            <a href={issue.url} target="_blank" rel="noreferrer">
-              #{issue.number} {issue.title}
-            </a>
-          </p>
+          {recipient && <p role="status" className="ck-local-note">Draft addressed to {recipient} — awaiting your approval. Send to Slack posts to the webhook destination, not automatically to this person.</p>}
+          {issue ? (
+            <p className="ck-local-note">Matched to{" "}<a href={issue.url} target="_blank" rel="noreferrer">#{issue.number} {issue.title}</a></p>
+          ) : <p className="ck-local-note">No matching open GitHub issue. This draft has no issue link.</p>}
           <label className="ck-sr-only" htmlFor="draft-card-textarea">
             Drafted Slack message
           </label>
@@ -129,7 +135,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
           <button
             type="button"
             className="ck-btn ck-btn--primary"
-            disabled={sendState.status === "sending" || !draft.trim()}
+            disabled={sendState.status === "sending" || slackConfigured === false || !draft.trim()}
             onClick={sendToSlack}
           >
             {sendState.status === "sending" ? "Sending…" : "Send to Slack"}

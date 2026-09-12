@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { POST } from "../app/api/counterpoint/slack/route";
+import { GET, POST } from "../app/api/counterpoint/slack/route";
+
+test("Slack configuration status exposes no webhook secret", async () => {
+  const previousUrl = process.env.SLACK_WEBHOOK_URL;
+  try {
+    process.env.SLACK_WEBHOOK_URL = "https://hooks.slack.test/example";
+    assert.deepEqual(await (await GET()).json(), { configured: true });
+    delete process.env.SLACK_WEBHOOK_URL;
+    assert.deepEqual(await (await GET()).json(), { configured: false });
+  } finally {
+    if (previousUrl === undefined) delete process.env.SLACK_WEBHOOK_URL;
+    else process.env.SLACK_WEBHOOK_URL = previousUrl;
+  }
+});
 
 test("Slack webhook receives plain-text fallback and linked issue blocks", async () => {
   const previousUrl = process.env.SLACK_WEBHOOK_URL;

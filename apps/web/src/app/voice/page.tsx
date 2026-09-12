@@ -192,21 +192,27 @@ export default function VoicePage() {
       type: "question_detected", at: detected.timestamp, questionId,
     });
     try {
-      const response = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: detected.question, results: 3 }),
-      });
-      if (!response.ok) throw new Error(`Search returned HTTP ${response.status}.`);
-      const payload = (await response.json()) as { results?: unknown };
+      let hits: SearchHit[] = [];
+      try {
+        const response = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: detected.question, results: 3 }),
+        });
+        if (!response.ok) throw new Error(`Search returned HTTP ${response.status}.`);
+        const payload = (await response.json()) as { results?: unknown };
+        if (typeof payload.results === "string") throw new Error(payload.results);
+        hits = sourceHits(payload.results);
+      } catch {
+        // Gemini can still answer a detected question, clearly marked unverified.
+      }
       if (generation !== generationRef.current) return;
-      if (typeof payload.results === "string") throw new Error(payload.results);
-      const hits = sourceHits(payload.results);
-      if (hits.length === 0) throw new Error("Search returned no usable sources.");
       setResearchStatus("synthesizing");
-      setResearchMessage("Exa found sources; Gemini Flash-Lite is preparing a short contribution.");
-      let summary = shortFinding(hits[0]);
-      let synthesisNote = "Gemini Flash-Lite prepared this contribution.";
+      setResearchMessage(hits.length
+        ? "Exa found sources; Gemini Flash-Lite is preparing a short contribution."
+        : "No Exa sources available; asking Gemini for an unverified answer.");
+      let summary = hits.length ? shortFinding(hits[0]) : "";
+      let synthesisNote = hits.length ? "Gemini Flash-Lite prepared this contribution." : "Gemini Flash-Lite prepared an unverified answer; no Exa sources were available.";
       try {
         const synthesis = await fetch("/api/counterpoint", {
           method: "POST",
@@ -218,6 +224,7 @@ export default function VoicePage() {
         summary = result.text;
         synthesisNote = `${result.model ?? "Gemini Flash-Lite"} prepared this contribution.`;
       } catch (cause) {
+        if (!hits.length) throw cause;
         synthesisNote = `Gemini unavailable; using an Exa source excerpt. ${cause instanceof Error ? cause.message : ""}`;
       }
       if (generation !== generationRef.current) return;
@@ -289,9 +296,9 @@ export default function VoicePage() {
         body: JSON.stringify({ transcript: detected.topic, person: detected.person }),
       });
       const result = (await response.json()) as { issue?: AutomaticDraft["issue"]; draft?: string; error?: string };
-      if (!response.ok || !result.issue || !result.draft) throw new Error(result.error ?? `Draft request failed (HTTP ${response.status}).`);
+      if (!response.ok || !result.draft) throw new Error(result.error ?? `Draft request failed (HTTP ${response.status}).`);
       if (generation !== generationRef.current || requestId !== commitmentRequestRef.current) return;
-      setAutomaticDraft({ id: requestId, person: detected.person, issue: result.issue, draft: result.draft });
+      setAutomaticDraft({ id: requestId, person: detected.person, issue: result.issue ?? null, draft: result.draft });
       setCommitmentActivity(`Commitment detected - ${detected.person} - ${detected.topic} - draft awaiting approval`);
     } catch (cause) {
       if (generation !== generationRef.current || requestId !== commitmentRequestRef.current) return;
@@ -549,6 +556,7 @@ export default function VoicePage() {
           <article key={finding.questionId} className="ck-card" style={{ marginTop: "1rem" }}>
             <h3>Prepared finding</h3>
             <p>{finding.summary}</p>
+            {!finding.sources.length && <p className="ck-local-note">Unverified Gemini answer — no external source was available.</p>}
             <ul>
               {finding.sources.map((source) => (
                 <li key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a></li>

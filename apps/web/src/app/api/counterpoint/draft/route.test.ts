@@ -14,7 +14,8 @@ async function requestDraft(
   key: string | undefined,
   modelResponse?: Response,
   person?: string,
-): Promise<{ result: { draft: string; source: string }; calls: string[] }> {
+  githubIssues: unknown[] = [issue],
+): Promise<{ result: { draft: string; source: string; issue: unknown }; calls: string[] }> {
   const previousKey = process.env.OPENROUTER_API_KEY;
   const previousFetch = globalThis.fetch;
   const calls: string[] = [];
@@ -24,7 +25,7 @@ async function requestDraft(
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       calls.push(url);
-      if (url.includes("api.github.com")) return Response.json([issue]);
+      if (url.includes("api.github.com")) return Response.json(githubIssues);
       assert.equal(url, "https://openrouter.ai/api/v1/chat/completions");
       assert.equal(init?.method, "POST");
       const payload = JSON.parse(String(init?.body));
@@ -83,4 +84,17 @@ test("the model receives the named recipient and topic", async () => {
     choices: [{ message: { content: "Ana, we discussed the microphone issue. It may relate to issue #12; please check the first-word behavior." } }],
   }), "Ana");
   assert.equal(result.source, "model");
+});
+
+test("an empty GitHub issue list still yields an unlinked draft", async () => {
+  const { result } = await requestDraft(undefined, undefined, "Ana", []);
+  assert.equal(result.source, "template");
+  assert.equal(result.issue, null);
+  assert.match(result.draft, /^Hi Ana —/);
+  assert.match(result.draft, /no matching open GitHub issue/i);
+});
+
+test("an unrelated issue is not falsely claimed as a match", async () => {
+  const { result } = await requestDraft(undefined, undefined, "Ana", [{ ...issue, title: "Billing invoice", body: "Customer payment" }]);
+  assert.equal(result.issue, null);
 });
