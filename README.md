@@ -12,13 +12,30 @@ The browser voice surface is the implementation being demonstrated. The [Google 
 
 ## Run from a clean clone
 
-Use Node.js 22+ and Chrome. From the repository root:
+### Prerequisites
+
+- Node.js 22 or later (`node --version`)
+- Google Chrome, with access to a microphone
+- A Gemini API key and an Exa API key
+
+From the repository root, clone and install the dependencies:
 
 ```bash
 git clone https://github.com/F1NH4WK/counterpoint.git
 cd counterpoint
 npm ci
+```
+
+Create the root environment file:
+
+```bash
+# macOS / Linux
 cp .env.example .env
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 
 Set these two values in the root `.env`:
@@ -30,13 +47,13 @@ EXA_API_KEY=your-exa-key
 
 Get a [Gemini API key](https://aistudio.google.com/apikey) and an [Exa API key](https://dashboard.exa.ai/api-keys). The keys are read by server routes and must stay out of the browser and version control. **No OpenAI API credits or key are required for Counterpoint's `/voice` flow.** The inherited starter-kit chat and Realtime endpoints have separate credentials and are not used by this flow.
 
-Start the single web process:
+Start the web application:
 
 ```bash
 npm run dev:web
 ```
 
-Open **http://127.0.0.1:3100/voice** in Chrome. Select English or Português (Brasil), click **Start talking**, and allow microphone access. In Chrome's microphone site settings, select the microphone you intend to use; virtual audio devices can appear as the default. Try “Does browser speech recognition already exist?” in English, or “Será que isso já existe?” in Portuguese. Watch the **Detected question**, **Research**, and **Decision** fields. When a finding is offered, Chrome speaks it and the panel shows its source links. Headphones help keep playback out of the microphone.
+When the terminal reports that the server is ready, open **http://127.0.0.1:3100/voice** in Chrome. Select English or Português (Brasil), click **Start talking**, and allow microphone access. In Chrome's microphone site settings, select the microphone you intend to use; virtual audio devices can appear as the default. Try “Does browser speech recognition already exist?” in English, or “Será que isso já existe?” in Portuguese. Watch the **Detected question**, **Research**, and **Decision** fields. When a finding is offered, Chrome speaks it and the panel shows its source links. Headphones help keep playback out of the microphone.
 
 Chrome speech recognition and playback must be available and microphone access granted. Exa and Gemini availability affect live research; if Gemini fails, the page can use a short Exa excerpt. Findings and transcript are session-only browser state.
 
