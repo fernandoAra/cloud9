@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RealtimeAgent, RealtimeSession, tool } from "@openai/agents/realtime";
-import { SYSTEM_PROMPT, searchWebParameters } from "agent-core/shared";
+import { SURFACE_RULES, searchWebParameters } from "agent-core/shared";
 import { REALTIME_MODEL } from "@/lib/realtime-config";
 import { detectUncertainty, type DetectedQuestion } from "@/lib/uncertainty";
 import {
@@ -65,8 +65,10 @@ const searchTheWeb = tool({
 const voiceAgent = new RealtimeAgent({
   name: "Everywhere",
   instructions: [
-    SYSTEM_PROMPT,
+    SURFACE_RULES,
     "",
+    "You are an optional participant in a live brainstorm between humans. Help with concrete, researchable uncertainties while keeping the humans' discussion central.",
+    "When relevant, use search_web for factual claims. Distinguish a sourced finding from your own inference. If live search is unavailable, say so plainly.",
     "You are speaking out loud. Answer in one or two sentences. Never read out a URL, id, or code block.",
   ].join("\n"),
   tools: [searchTheWeb],
