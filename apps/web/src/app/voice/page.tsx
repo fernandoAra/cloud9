@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { detectUncertainty, type DetectedQuestion } from "@/lib/uncertainty";
+import { startRecognition } from "@/lib/voice-input";
 import {
   decideParticipation,
   initialParticipationState,
@@ -321,7 +322,10 @@ export default function VoicePage() {
         }, { once: true });
       } catch (cause) {
         if (generation !== generationRef.current) return;
-        setError(cause instanceof Error ? `Meet tab sharing failed: ${cause.message}` : "Meet tab sharing failed.");
+        const message = cause instanceof Error ? cause.message : String(cause);
+        setError((cause instanceof DOMException && cause.name === "InvalidStateError") || message === "Invalid state"
+          ? "Keep the Counterpoint tab focused, then click Listen to a Meet tab again."
+          : `Meet tab sharing failed: ${message}`);
         setStatus("error");
         return;
       }
@@ -400,7 +404,9 @@ export default function VoicePage() {
       if (!runningRef.current || generation !== generationRef.current) return;
       restartRef.current = setTimeout(() => {
         if (!runningRef.current) return;
-        try { recognition.start(audioTrack); } catch {
+        try {
+          startRecognition(recognition, audioTrack);
+        } catch {
           disconnect();
           setStatus("error");
           setError("Speech recognition could not restart.");
@@ -408,7 +414,7 @@ export default function VoicePage() {
       }, 150);
     };
     try {
-      recognition.start(audioTrack);
+      startRecognition(recognition, audioTrack);
       tickRef.current = setInterval(() => evaluateDecision(Date.now()), 250);
     } catch (cause) {
       disconnect();
