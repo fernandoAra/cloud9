@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DraftCard } from "@/components/draft-card";
+import { DraftCard, type AutomaticDraft } from "@/components/draft-card";
+import { COMMITMENT_DEDUPE_WINDOW_MS, detectCommitment, type DetectedCommitment } from "@/lib/commitment";
 import { detectUncertainty, type DetectedQuestion } from "@/lib/uncertainty";
 import { startRecognition } from "@/lib/voice-input";
 import {
@@ -86,6 +87,9 @@ export default function VoicePage() {
   const [humanSpeaking, setHumanSpeaking] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [playbackMessage, setPlaybackMessage] = useState("No audio requested yet.");
+  const [commitmentActivity, setCommitmentActivity] = useState("Waiting for a person-directed action.");
+  const [automaticDraft, setAutomaticDraft] = useState<AutomaticDraft | null>(null);
+  const [commitmentDrafting, setCommitmentDrafting] = useState(false);
 
   const recognitionRef = useRef<BrowserRecognition | null>(null);
   const captureStreamRef = useRef<MediaStream | null>(null);
@@ -102,6 +106,10 @@ export default function VoicePage() {
   const discardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const recognitionRunRef = useRef(0);
+  const commitmentDraftInFlightRef = useRef(false);
+  const manualDraftInFlightRef = useRef(false);
+  const commitmentRequestRef = useRef(0);
+  const recentCommitmentsRef = useRef(new Map<string, number>());
 
   const speakFinding = useCallback((finding: PreparedFinding) => {
     if (!runningRef.current || spokenRef.current.has(finding.questionId)) return;
@@ -252,8 +260,60 @@ export default function VoicePage() {
     void researchQuestion(detected, itemId);
   }, [researchQuestion]);
 
+  const draftCommitment = useCallback(async (detected: DetectedCommitment) => {
+    const key = `${detected.person}|${detected.topic}`.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
+    for (const [previousKey, at] of recentCommitmentsRef.current) {
+      if (detected.timestamp - at >= COMMITMENT_DEDUPE_WINDOW_MS) recentCommitmentsRef.current.delete(previousKey);
+    }
+    if (recentCommitmentsRef.current.has(key)) {
+      setCommitmentActivity(`Commitment detected - ${detected.person} - ${detected.topic} - already drafted within 60 seconds`);
+      return;
+    }
+    if (commitmentDraftInFlightRef.current || manualDraftInFlightRef.current) {
+      setCommitmentActivity(`Commitment detected - ${detected.person} - ${detected.topic} - skipped: another draft is in progress`);
+      return;
+    }
+
+    recentCommitmentsRef.current.set(key, detected.timestamp);
+    commitmentDraftInFlightRef.current = true;
+    setCommitmentDrafting(true);
+    const requestId = ++commitmentRequestRef.current;
+    const generation = generationRef.current;
+    setAutomaticDraft(null);
+    setCommitmentActivity(`Commitment detected - ${detected.person} - ${detected.topic} - drafting update`);
+    // Drafting is silent and costs no conversational turn; only speech consults the participation gate.
+    try {
+      const response = await fetch("/api/counterpoint/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: detected.topic, person: detected.person }),
+      });
+      const result = (await response.json()) as { issue?: AutomaticDraft["issue"]; draft?: string; error?: string };
+      if (!response.ok || !result.issue || !result.draft) throw new Error(result.error ?? `Draft request failed (HTTP ${response.status}).`);
+      if (generation !== generationRef.current || requestId !== commitmentRequestRef.current) return;
+      setAutomaticDraft({ id: requestId, person: detected.person, issue: result.issue, draft: result.draft });
+      setCommitmentActivity(`Commitment detected - ${detected.person} - ${detected.topic} - draft awaiting approval`);
+    } catch (cause) {
+      if (generation !== generationRef.current || requestId !== commitmentRequestRef.current) return;
+      setCommitmentActivity(`Commitment detected - ${detected.person} - ${detected.topic} - draft unavailable: ${cause instanceof Error ? cause.message : "request failed"}`);
+    } finally {
+      if (requestId === commitmentRequestRef.current) {
+        commitmentDraftInFlightRef.current = false;
+        setCommitmentDrafting(false);
+      }
+    }
+  }, []);
+
+  const detectCommitmentFromTranscript = useCallback((text: string) => {
+    const detected = detectCommitment(text, Date.now());
+    if (detected) void draftCommitment(detected);
+  }, [draftCommitment]);
+
   const disconnect = useCallback(() => {
     generationRef.current += 1;
+    commitmentRequestRef.current += 1;
+    commitmentDraftInFlightRef.current = false;
+    setCommitmentDrafting(false);
     runningRef.current = false;
     recognitionRef.current?.stop();
     recognitionRef.current = null;
@@ -350,6 +410,8 @@ export default function VoicePage() {
     setTranscript([]);
     setResearchStatus("idle");
     setResearchMessage("Waiting for a researchable question.");
+    setCommitmentActivity("Waiting for a person-directed action.");
+    setAutomaticDraft(null);
     setDecision({ action: "HOLD", reason: "Waiting for a prepared finding." });
     setPlaybackMessage("No audio requested yet.");
     setError(undefined);
@@ -384,6 +446,7 @@ export default function VoicePage() {
         if (!result.isFinal || seenFinalRef.current.has(itemId)) continue;
         seenFinalRef.current.add(itemId);
         setTranscript((previous) => [...previous, `human  ${text}`]);
+        detectCommitmentFromTranscript(text);
         if (TOPIC_CHANGE.test(text) && !seenTopicChangesRef.current.has(itemId)) {
           seenTopicChangesRef.current.add(itemId);
           const now = Date.now();
@@ -422,7 +485,7 @@ export default function VoicePage() {
       setError(cause instanceof Error ? cause.message : String(cause));
       setStatus("error");
     }
-  }, [detectFromTranscript, disconnect, evaluateDecision, language]);
+  }, [detectFromTranscript, detectCommitmentFromTranscript, disconnect, evaluateDecision, language]);
 
   useEffect(() => () => {
     generationRef.current += 1;
@@ -472,8 +535,14 @@ export default function VoicePage() {
         <p><strong>Room:</strong> {agentSpeaking ? "Counterpoint is speaking" : humanSpeaking ? "A person is speaking" : "No speech detected"}</p>
         <p><strong>Detected question:</strong> {question ? `${question.question} (${Math.round(question.confidence * 100)}% pattern confidence)` : "None yet"}</p>
         <p><strong>Research:</strong> {researchStatus} — {researchMessage}</p>
+        <p><strong>Commitment event:</strong> {commitmentActivity}</p>
         <p><strong>Decision:</strong> {decision.action} — {decision.reason}</p>
-        <DraftCard transcript={transcript.slice(-8).map((line) => line.replace(/^human\s+/, "")).join("\n")} />
+        <DraftCard
+          transcript={transcript.slice(-8).map((line) => line.replace(/^human\s+/, "")).join("\n")}
+          automaticDraft={automaticDraft}
+          automaticDraftPending={commitmentDrafting}
+          onManualDraftInFlightChange={(inFlight) => { manualDraftInFlightRef.current = inFlight; }}
+        />
         <p><strong>Audio:</strong> {playbackMessage}</p>
 
         {findings.map((finding) => (

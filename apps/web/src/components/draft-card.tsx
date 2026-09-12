@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type MatchedIssue = { number: number; title: string; url: string };
+export type AutomaticDraft = { id: number; person: string; issue: MatchedIssue; draft: string };
 
 type SendState =
   | { status: "idle" }
@@ -11,14 +12,38 @@ type SendState =
   | { status: "not-configured"; reason: string }
   | { status: "error"; message: string };
 
-export function DraftCard({ transcript }: { transcript: string }) {
+export function DraftCard({ transcript, automaticDraft, automaticDraftPending = false, onManualDraftInFlightChange }: {
+  transcript: string;
+  automaticDraft?: AutomaticDraft | null;
+  automaticDraftPending?: boolean;
+  onManualDraftInFlightChange?: (inFlight: boolean) => void;
+}) {
   const [issue, setIssue] = useState<MatchedIssue | null>(null);
   const [draft, setDraft] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [sendState, setSendState] = useState<SendState>({ status: "idle" });
+  const [recipient, setRecipient] = useState("");
+
+  useEffect(() => {
+    if (!automaticDraft) {
+      setIssue(null);
+      setDraft("");
+      setRecipient("");
+      setSendState({ status: "idle" });
+      return;
+    }
+    setIssue(automaticDraft.issue);
+    setDraft(automaticDraft.draft);
+    setRecipient(automaticDraft.person);
+    setDraftError("");
+    setSendState({ status: "idle" });
+  }, [automaticDraft]);
 
   async function draftMessage() {
+    if (drafting || automaticDraftPending) return;
+    onManualDraftInFlightChange?.(true);
+    setRecipient("");
     setDrafting(true);
     setDraftError("");
     setSendState({ status: "idle" });
@@ -38,6 +63,7 @@ export function DraftCard({ transcript }: { transcript: string }) {
       setDraftError(error instanceof Error ? error.message : "Unable to draft a Slack message.");
     } finally {
       setDrafting(false);
+      onManualDraftInFlightChange?.(false);
     }
   }
 
@@ -70,10 +96,10 @@ export function DraftCard({ transcript }: { transcript: string }) {
       <button
         type="button"
         className="ck-btn"
-        disabled={drafting || !transcript.trim()}
+        disabled={drafting || automaticDraftPending || !transcript.trim()}
         onClick={draftMessage}
       >
-        {drafting ? "Matching to an issue…" : "Draft Slack update"}
+        {drafting || automaticDraftPending ? "Matching to an issue…" : "Draft Slack update"}
       </button>
 
       {draftError && (
@@ -84,6 +110,7 @@ export function DraftCard({ transcript }: { transcript: string }) {
 
       {issue && (
         <>
+          {recipient && <p role="status" className="ck-local-note">Draft for {recipient} — awaiting your approval. Nothing is sent until you click Send to Slack.</p>}
           <p className="ck-local-note">
             Matched to{" "}
             <a href={issue.url} target="_blank" rel="noreferrer">

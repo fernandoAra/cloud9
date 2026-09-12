@@ -5,7 +5,7 @@ const REPO = "F1NH4WK/counterpoint";
 const SNIPPET_LIMIT = 220;
 const DRAFT_MODEL = "google/gemini-2.5-flash-lite";
 
-async function writeModelDraft(transcript: string, issue: GithubIssueLite): Promise<string | null> {
+async function writeModelDraft(transcript: string, issue: GithubIssueLite, person: string): Promise<string | null> {
   const key = process.env.OPENROUTER_API_KEY?.trim();
   if (!key) return null;
 
@@ -22,11 +22,11 @@ async function writeModelDraft(transcript: string, issue: GithubIssueLite): Prom
         messages: [
           {
             role: "system",
-            content: "Write a 2-3 sentence plain-text Slack message to a teammate. Say what was said in the meeting, why it relates to the supplied GitHub issue number, and one concrete next step. No markdown headers or emoji. Never invent facts beyond the transcript or issue. If the connection is uncertain, say so.",
+            content: "Write a 2-3 sentence plain-text Slack message to a teammate. Address the named person directly when one is supplied. Say what was said in the meeting about the named topic, why it relates to the supplied GitHub issue number, and one concrete next step. No markdown headers or emoji. Never invent facts beyond the transcript or issue. If the connection is uncertain, say so.",
           },
           {
             role: "user",
-            content: `Meeting transcript:\n${transcript}\n\nGitHub issue #${issue.number}: ${issue.title}\nIssue description: ${issue.body?.slice(0, 2000) ?? ""}\nIssue URL: ${issue.url}`,
+            content: `Recipient: ${person || "unspecified teammate"}\nMeeting topic: ${transcript}\n\nGitHub issue #${issue.number}: ${issue.title}\nIssue description: ${issue.body?.slice(0, 2000) ?? ""}\nIssue URL: ${issue.url}`,
           },
         ],
       }),
@@ -42,13 +42,14 @@ async function writeModelDraft(transcript: string, issue: GithubIssueLite): Prom
 }
 
 export async function POST(request: Request) {
-  let body: { transcript?: unknown };
+  let body: { transcript?: unknown; person?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: "Invalid JSON." }, { status: 400 });
   }
   const transcript = typeof body.transcript === "string" ? body.transcript.trim().slice(0, 4000) : "";
+  const person = typeof body.person === "string" ? body.person.trim().slice(0, 80) : "";
   if (!transcript) return Response.json({ error: "A transcript is required." }, { status: 400 });
 
   let issues: GithubIssueLite[];
@@ -87,8 +88,8 @@ export async function POST(request: Request) {
 
   const snippet = transcript.replace(/\s+/g, " ").slice(0, SNIPPET_LIMIT);
   const truncated = transcript.length > SNIPPET_LIMIT ? "…" : "";
-  const templateDraft = `Heads up — from today's conversation: "${snippet}${truncated}" This looks related to issue #${best.issue.number} ("${best.issue.title}"). Worth checking ${best.issue.url} to see if it already covers this.`;
-  const modelDraft = await writeModelDraft(transcript, best.issue);
+  const templateDraft = `${person ? `Hi ${person} — ` : ""}Heads up — from today's conversation: "${snippet}${truncated}" This looks related to issue #${best.issue.number} ("${best.issue.title}"). Worth checking ${best.issue.url} to see if it already covers this.`;
+  const modelDraft = await writeModelDraft(transcript, best.issue, person);
   const draft = modelDraft ?? templateDraft;
 
   return Response.json({
