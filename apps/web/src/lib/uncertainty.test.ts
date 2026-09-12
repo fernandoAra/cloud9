@@ -16,6 +16,9 @@ test("detects concrete researchable uncertainties before a transcript is finaliz
 
   const priorArt = detectUncertainty("Who else has built this?", 130);
   assert.equal(priorArt?.question, "Who else has built this?");
+
+  const portuguese = detectUncertainty("Será que esse produto já existe?", 140);
+  assert.equal(portuguese?.question, "Será que esse produto já existe?");
 });
 
 test("ignores rhetorical questions that do not call for research", () => {

@@ -10,6 +10,10 @@ const RESEARCH_QUESTIONS: ReadonlyArray<{ pattern: RegExp; confidence: number }>
   { pattern: /\b(?:is|are)\s+[^?.!\n]{1,80}?\s+(?:actually\s+)?(?:faster|slower|cheaper|better)\s+than\s+[^?.!\n]{1,80}/gi, confidence: 0.88 },
   { pattern: /\bwho\s+else\s+(?:has|have)\s+(?:built|made|created|done)\b[^?.!\n]*/gi, confidence: 0.91 },
   { pattern: /\bhas\s+anyone\s+(?:already\s+)?(?:built|made|created|done)\b[^?.!\n]*/gi, confidence: 0.88 },
+  { pattern: /\bser[aá]\s+que\s+[^?.!\n]{1,100}?\s+(?:j[aá]\s+)?existe\b[^?.!\n]*/gi, confidence: 0.92 },
+  { pattern: /\b(?:isso|essa?\s+ideia)\s+j[aá]\s+existe\b[^?.!\n]*/gi, confidence: 0.9 },
+  { pattern: /\balgu[eé]m\s+j[aá]\s+(?:fez|criou|construiu)\b[^?.!\n]*/gi, confidence: 0.88 },
+  { pattern: /\bquem\s+mais\s+(?:fez|criou|construiu)\b[^?.!\n]*/gi, confidence: 0.88 },
 ];
 
 /**
