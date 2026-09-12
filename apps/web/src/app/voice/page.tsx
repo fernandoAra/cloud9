@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DraftCard } from "@/components/draft-card";
 import { detectUncertainty, type DetectedQuestion } from "@/lib/uncertainty";
 import { startRecognition } from "@/lib/voice-input";
 import {
@@ -472,6 +473,7 @@ export default function VoicePage() {
         <p><strong>Detected question:</strong> {question ? `${question.question} (${Math.round(question.confidence * 100)}% pattern confidence)` : "None yet"}</p>
         <p><strong>Research:</strong> {researchStatus} — {researchMessage}</p>
         <p><strong>Decision:</strong> {decision.action} — {decision.reason}</p>
+        <DraftCard transcript={transcript.slice(-8).map((line) => line.replace(/^human\s+/, "")).join("\n")} />
         <p><strong>Audio:</strong> {playbackMessage}</p>
 
         {findings.map((finding) => (
