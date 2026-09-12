@@ -25,6 +25,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
   const [sendState, setSendState] = useState<SendState>({ status: "idle" });
   const [recipient, setRecipient] = useState("");
   const [slackConfigured, setSlackConfigured] = useState<boolean | null>(null);
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
     void fetch("/api/counterpoint/slack")
@@ -46,6 +47,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
     setRecipient(automaticDraft.person);
     setDraftError("");
     setSendState({ status: "idle" });
+    setCopyStatus("");
   }, [automaticDraft]);
 
   async function draftMessage() {
@@ -55,6 +57,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
     setDrafting(true);
     setDraftError("");
     setSendState({ status: "idle" });
+    setCopyStatus("");
     try {
       const response = await fetch("/api/counterpoint/draft", {
         method: "POST",
@@ -98,6 +101,15 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
     }
   }
 
+  async function copyDraft() {
+    try {
+      await navigator.clipboard.writeText(draft);
+      setCopyStatus(`Draft copied. Open ${recipient ? `${recipient}'s` : "the intended"} DM in Slack, paste it, and send there.`);
+    } catch {
+      setCopyStatus("Copy failed. Select the draft text above and copy it manually.");
+    }
+  }
+
   return (
     <section className="ck-card" aria-labelledby="draft-card-title">
       <h3 id="draft-card-title">Draft a Slack update</h3>
@@ -119,7 +131,7 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
 
       {draft && (
         <>
-          {recipient && <p role="status" className="ck-local-note">Draft addressed to {recipient} — awaiting your approval. Send to Slack posts to the webhook destination, not automatically to this person.</p>}
+          {recipient && <p role="status" className="ck-local-note">Draft addressed to {recipient} — awaiting your approval. {slackConfigured === false ? "Copying does not send it." : "Send to Slack posts to the webhook destination, not automatically to this person."}</p>}
           {issue ? (
             <p className="ck-local-note">Matched to{" "}<a href={issue.url} target="_blank" rel="noreferrer">#{issue.number} {issue.title}</a></p>
           ) : <p className="ck-local-note">No matching open GitHub issue. This draft has no issue link.</p>}
@@ -132,14 +144,21 @@ export function DraftCard({ transcript, automaticDraft, automaticDraftPending = 
             onChange={(event) => setDraft(event.target.value)}
             rows={4}
           />
-          <button
-            type="button"
-            className="ck-btn ck-btn--primary"
-            disabled={sendState.status === "sending" || slackConfigured === false || !draft.trim()}
-            onClick={sendToSlack}
-          >
-            {sendState.status === "sending" ? "Sending…" : "Send to Slack"}
-          </button>
+          {slackConfigured === false ? (
+            <>
+              <button type="button" className="ck-btn ck-btn--primary" disabled={!draft.trim()} onClick={() => void copyDraft()}>Copy draft for Slack</button>
+              {copyStatus && <p role="status" className="ck-local-note">{copyStatus}</p>}
+            </>
+          ) : (
+            <button
+              type="button"
+              className="ck-btn ck-btn--primary"
+              disabled={sendState.status === "sending" || !draft.trim()}
+              onClick={sendToSlack}
+            >
+              {sendState.status === "sending" ? "Sending…" : "Send to Slack"}
+            </button>
+          )}
 
           {sendState.status === "sent" && (
             <p role="status" className="ck-notice">
