@@ -10,6 +10,11 @@ The MVP runs at **`/voice` in Chrome**. Browser speech recognition supplies inte
 
 The browser voice surface is the implementation being demonstrated. The [Google Meet Chrome extension design](docs/counterpoint/architecture.md) is a possible next surface; this repository does **not** contain that extension, Meet tab capture, or company-system connectors. The Portuguese [concept document](docs/counterpoint/README-counterpoint-pt.md) records the team's broader product direction.
 
+## Chrome Extension
+
+https://github.com/F1NH4WK/counterpoint
+
+
 ## Run from a clean clone
 
 ### Prerequisites
