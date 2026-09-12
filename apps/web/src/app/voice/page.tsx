@@ -6,6 +6,7 @@ import {
   decideParticipation,
   initialParticipationState,
   reduceParticipation,
+  transition,
   type ParticipationDecision,
 } from "@/lib/participation";
 
@@ -65,6 +66,7 @@ function shortFinding(hit: SearchHit): string {
 
 export default function VoicePage() {
   const [status, setStatus] = useState<Status>("idle");
+  const [language, setLanguage] = useState("en-US");
   const [error, setError] = useState<string>();
   const [transcript, setTranscript] = useState<string[]>([]);
   const [question, setQuestion] = useState<DetectedQuestion | null>(null);
@@ -87,7 +89,6 @@ export default function VoicePage() {
   const seenFinalRef = useRef(new Set<string>());
   const seenTopicChangesRef = useRef(new Set<string>());
   const spokenRef = useRef(new Set<string>());
-  const agentSpeakingRef = useRef(false);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restartRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,13 +99,19 @@ export default function VoicePage() {
     if (!runningRef.current || spokenRef.current.has(finding.questionId)) return;
     spokenRef.current.add(finding.questionId);
     const utterance = new SpeechSynthesisUtterance(finding.summary);
-    utterance.lang = navigator.language || "en-US";
+    utterance.lang = language;
     utterance.rate = 1.05;
-    utterance.onstart = () => { agentSpeakingRef.current = true; setAgentSpeaking(true); };
-    utterance.onend = utterance.onerror = () => { agentSpeakingRef.current = false; setAgentSpeaking(false); };
+    utterance.onstart = () => {
+      participationRef.current = transition(participationRef.current, { type: "agent_audio_started", at: Date.now(), candidateId: finding.questionId }).state;
+      setAgentSpeaking(true);
+    };
+    utterance.onend = utterance.onerror = () => {
+      participationRef.current = transition(participationRef.current, { type: "agent_audio_ended", at: Date.now(), candidateId: finding.questionId }).state;
+      setAgentSpeaking(false);
+    };
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [language]);
 
   const evaluateDecision = useCallback((now: number) => {
     let current = findingsRef.current;
@@ -214,7 +221,6 @@ export default function VoicePage() {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     window.speechSynthesis.cancel();
-    agentSpeakingRef.current = false;
     if (tickRef.current) clearInterval(tickRef.current);
     if (restartRef.current) clearTimeout(restartRef.current);
     tickRef.current = null;
@@ -237,7 +243,7 @@ export default function VoicePage() {
     const recognition = new Recognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = navigator.language || "en-US";
+    recognition.lang = language;
     recognitionRef.current = recognition;
     runningRef.current = true;
     participationRef.current = initialParticipationState;
@@ -264,14 +270,15 @@ export default function VoicePage() {
     recognition.onspeechstart = () => {
       const now = Date.now();
       setHumanSpeaking(true);
-      participationRef.current = reduceParticipation(participationRef.current, { type: "speech_started", at: now });
-      if (agentSpeakingRef.current) window.speechSynthesis.cancel();
+      const result = transition(participationRef.current, { type: "speech_started", at: now });
+      participationRef.current = result.state;
+      if (result.actions.some((action) => action.type === "cancel_agent_audio") || window.speechSynthesis.pending) window.speechSynthesis.cancel();
       evaluateDecision(now);
     };
     recognition.onspeechend = () => {
       const now = Date.now();
       setHumanSpeaking(false);
-      participationRef.current = reduceParticipation(participationRef.current, { type: "speech_stopped", at: now });
+      participationRef.current = transition(participationRef.current, { type: "speech_stopped", at: now }).state;
       evaluateDecision(now);
     };
     recognition.onresult = (event) => {
@@ -315,7 +322,7 @@ export default function VoicePage() {
       setError(cause instanceof Error ? cause.message : String(cause));
       setStatus("error");
     }
-  }, [detectFromTranscript, disconnect, evaluateDecision]);
+  }, [detectFromTranscript, disconnect, evaluateDecision, language]);
 
   useEffect(() => () => {
     runningRef.current = false;
@@ -333,6 +340,12 @@ export default function VoicePage() {
       <p className="ck-dek">A quiet research partner for live brainstorming. Ask a concrete question; Counterpoint researches it while you keep talking.</p>
 
       <div className="ck-actions" style={{ marginTop: "2rem" }}>
+        <label>Recognition language{" "}
+          <select value={language} onChange={(event) => setLanguage(event.target.value)} disabled={status === "live" || status === "connecting"}>
+            <option value="en-US">English</option>
+            <option value="pt-BR">Português (Brasil)</option>
+          </select>
+        </label>
         {status === "live" ? (
           <button type="button" className="ck-btn" onClick={disconnect}>End call</button>
         ) : (

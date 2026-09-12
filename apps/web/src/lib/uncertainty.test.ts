@@ -19,6 +19,9 @@ test("detects concrete researchable uncertainties before a transcript is finaliz
 
   const portuguese = detectUncertainty("Será que esse produto já existe?", 140);
   assert.equal(portuguese?.question, "Será que esse produto já existe?");
+
+  const factual = detectUncertainty("Qual a velocidade de uma andorinha grávida?", 150);
+  assert.equal(factual?.question, "Qual a velocidade de uma andorinha grávida?");
 });
 
 test("ignores rhetorical questions that do not call for research", () => {

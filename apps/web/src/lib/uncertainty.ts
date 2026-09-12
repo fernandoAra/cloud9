@@ -14,6 +14,8 @@ const RESEARCH_QUESTIONS: ReadonlyArray<{ pattern: RegExp; confidence: number }>
   { pattern: /\b(?:isso|essa?\s+ideia)\s+j[aá]\s+existe\b[^?.!\n]*/gi, confidence: 0.9 },
   { pattern: /\balgu[eé]m\s+j[aá]\s+(?:fez|criou|construiu)\b[^?.!\n]*/gi, confidence: 0.88 },
   { pattern: /\bquem\s+mais\s+(?:fez|criou|construiu)\b[^?.!\n]*/gi, confidence: 0.88 },
+  { pattern: /\bqual\s+(?:[eé]\s+)?(?:a|o)\s+(?:velocidade|custo|tempo|pre[cç]o|taxa)\s+d[eaou]\s+[^?.!\n]{2,100}/gi, confidence: 0.86 },
+  { pattern: /\bwhat\s+is\s+the\s+(?:speed|cost|price|rate)\s+of\s+[^?.!\n]{2,100}/gi, confidence: 0.86 },
 ];
 
 /**
